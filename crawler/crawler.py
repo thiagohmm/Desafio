@@ -1,5 +1,6 @@
 import pika
 import redis
+import json
 
 # RabbitMQ configuration
 RABBITMQ_HOST = 'localhost'
@@ -11,10 +12,19 @@ REDIS_PORT = 6379
 REDIS_DB = 0
 
 def callback(ch, method, properties, body):
+    cpflist = []
     message = body.decode('utf-8')
     print(f"Received message: {message}")
+    cpfUniqValues = list(set(json.loads(message)['cpfList']))
 
-  
+    #cpfDict = { 'CPF': cpf for cpf in cpfUniqValues }  
+    #print("formated", cpfDict, type(cpfUniqValues))
+    for cpf in cpfUniqValues:
+         dicionario = {"CPF": cpf, "NB": 0}
+         cpflist.append(dicionario)
+    
+        
+    print("formated", cpflist)
 
 def start_consumer():
     connection = pika.BlockingConnection(pika.ConnectionParameters(host=RABBITMQ_HOST))

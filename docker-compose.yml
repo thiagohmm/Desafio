@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  cache:
+    image: redis:6.2-alpine
+    restart: always
+    ports:
+      - '6379:6379'
+    networks:
+      - gateway
+    command: redis-server --save 20 1 --loglevel warning --requirepass eYVX7EwVmmxKPCDmwMtyKVge8oLd2t81
+
+  rabbitmq:
+      image: rabbitmq:3-management
+      container_name: rabbitmq_management
+      ports: 
+        - 25672:25672 # (erlang) communication between the nodes and CLI tool
+        - 15672:15672 # communication with the web management API 
+        - 5672:5672
+      networks:
+        - gateway
+      environment:
+        - RABBITMQ_DEFAULT_USER = admin
+        - RABBITMQ_DEFAULT_PASS = passw123
+      restart: always
+
+
+networks:
+  gateway: {}
