@@ -10,6 +10,18 @@ RABBITMQ_QUEUE = 'cpf_queue'
 REDIS_HOST = 'localhost'
 REDIS_PORT = 6379
 REDIS_DB = 0
+REDIS_AUTH = 'eYVX7EwVmmxKPCDmwMtyKVge8oLd2t81'
+
+
+def record_redis(lista):
+  
+   # Grava a lista no Redis.
+  for item in lista:
+    redis_client.setnx(item['CPF'], item['NB'])
+
+  # Fecha a conexão com o Redis.
+  redis_client.close()
+  print("gravado no REDIS")
 
 def callback(ch, method, properties, body):
     cpflist = []
@@ -17,14 +29,13 @@ def callback(ch, method, properties, body):
     print(f"Received message: {message}")
     cpfUniqValues = list(set(json.loads(message)['cpfList']))
 
-    #cpfDict = { 'CPF': cpf for cpf in cpfUniqValues }  
-    #print("formated", cpfDict, type(cpfUniqValues))
     for cpf in cpfUniqValues:
          dicionario = {"CPF": cpf, "NB": 0}
          cpflist.append(dicionario)
     
         
-    print("formated", cpflist)
+    
+    record_redis(cpflist)
 
 def start_consumer():
     connection = pika.BlockingConnection(pika.ConnectionParameters(host=RABBITMQ_HOST))
@@ -37,7 +48,7 @@ def start_consumer():
 
 if __name__ == '__main__':
     # Create a Redis client
-    redis_client = redis.StrictRedis(host=REDIS_HOST, port=REDIS_PORT, db=REDIS_DB)
+    redis_client = redis.StrictRedis(host=REDIS_HOST, port=REDIS_PORT, db=REDIS_DB,  password=REDIS_AUTH)
 
     # Start the consumer
     start_consumer()
