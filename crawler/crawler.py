@@ -2,6 +2,7 @@ import pika
 import redis
 import json
 import requests
+from elasticsearch import Elasticsearch
 import os
 from dotenv import load_dotenv
 
@@ -37,7 +38,11 @@ def get_all_data_from_redis():
     all_data = {}
     for key in all_keys:
         value = redis_client.get(key)
-        all_data[key] = value.decode('utf-8') if value else None
+        decoded_value = value.decode('utf-8') if value else None
+
+        # Condição para trazer apenas os registros com valor igual a 0
+        if decoded_value == '0':
+            all_data[key] = decoded_value
 
     return all_data
 
@@ -87,6 +92,34 @@ def make_get_request(cpf, bearer_token):
         return None
 
 
+def remove_cpf_from_redis(cpf):
+  
+    # Remove o CPF do Redis
+    redis_client.delete(cpf)
+
+def save_json_to_elasticsearch(json_data, index_name, document_id=None):
+
+    es_host = 'localhost'
+    es_port = 9200
+    es_scheme = 'http'
+    
+   
+
+    try:
+        # Conecta-se ao Elasticsearch
+        es = Elasticsearch([{'host': es_host, 'port': es_port, 'scheme': es_scheme}])
+        # Grava o documento JSON no índice especificado
+        response = es.index(index=index_name, body=json_data, id=document_id)
+        if response['result'] == 'created':
+            print("Documento gravado com sucesso!")
+        elif response['result'] == 'updated':
+            print("Documento atualizado com sucesso!")
+        else:
+            print("Falha ao gravar o documento no Elasticsearch.")
+    except Exception as e:
+        print(f"Erro ao gravar o documento no Elasticsearch: {e}")
+
+
 def callback(ch, method, properties, body):
     cpflist = []
     message = body.decode('utf-8')
@@ -104,14 +137,29 @@ def callback(ch, method, properties, body):
     if token:
         cpfok = []
         print('Authorization Token:', token)
+        #Tras todos os dados com valor 0 no redis
         dataRedis = get_all_data_from_redis()
-
+        
+        #percorre as keys do redis 
         for data in dataRedis:
+          #transforma de binario para string
           cpfToConsult = data.decode('utf-8')
+          #Faz o request para buscar o numero do beneficio (NB)
           result = make_get_request(cpfToConsult, token)
-          if result !=  "Matrícula não encontrada!":
-            dicionarioOK = {"CPF": cpf, "NB": result[0]['nb']}
+          #Armazena o numero do NB 
+          nb = result[0]['nb']
+          #Caso retorno NAO for igual a Matricula nao encontrada 
+          if nb !=  "Matrícula não encontrada!":
+            #Remove o dado antigo do redis
+            remove_cpf_from_redis(cpfToConsult)
+            #coloca em uma estrutura para atualizaçao
+            dicionarioOK = {"CPF": cpfToConsult , "NB": result[0]['nb']}
             cpfok.append(dicionarioOK)
+            save_json_to_elasticsearch(nb, cpfToConsult)
+        #Se a estrutura nao for vazia atualiza o redis
+        if cpfok:
+            
+            record_redis(cpfok)
         print(cpfok)
 
 
