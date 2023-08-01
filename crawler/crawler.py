@@ -146,6 +146,7 @@ def callback(ch, method, properties, body):
           cpfToConsult = data.decode('utf-8')
           #Faz o request para buscar o numero do beneficio (NB)
           result = make_get_request(cpfToConsult, token)
+          save_json_to_elasticsearch(result[0], cpfToConsult)
           #Armazena o numero do NB 
           nb = result[0]['nb']
           #Caso retorno NAO for igual a Matricula nao encontrada 
@@ -155,7 +156,8 @@ def callback(ch, method, properties, body):
             #coloca em uma estrutura para atualizaçao
             dicionarioOK = {"CPF": cpfToConsult , "NB": result[0]['nb']}
             cpfok.append(dicionarioOK)
-            save_json_to_elasticsearch(nb, cpfToConsult)
+          
+            
         #Se a estrutura nao for vazia atualiza o redis
         if cpfok:
             
