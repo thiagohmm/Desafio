@@ -1,10 +1,13 @@
 const express = require('express');
-const axios = require('axios');
 const amqp = require('amqplib');
+const { Client } = require('@elastic/elasticsearch');
+const cors = require('cors');
+
 
 const app = express();
-const PORT = 3000;
-
+const PORT = 3001;
+const esClient = new Client({ node: 'http://localhost:9200' });
+app.use(cors())
 app.use(express.json());
 
 // Função para enviar a lista de CPFs e o token Bearer para o RabbitMQ
@@ -55,11 +58,50 @@ app.post('/send-cpfs', async (req, res) => {
     // Chama a função para enviar os dados para o RabbitMQ
     sendToRabbitMQ(testedCpf);
 
-    res.status(200).json({ message: 'Requisição enviada com sucesso!' });
+    res.status(200).json({ message: 'Requisição enviada com sucesso!', cpf: testedCpf });
   } catch (error) {
     res.status(error.response.status || 500).json({ error: error.message });
   }
 });
+
+
+app.get('/buscar/:cpf', async (req, res) => {
+  const { cpf } = req.params;
+
+  try {
+    const body = await esClient.search({
+      index: '_all', // Consulta em todos os índices
+      body: {
+        query: {
+          term: {
+            _index: cpf, // Realiza a busca pelo _index correspondente ao CPF informado
+          },
+        },
+      },
+    });
+
+
+    // Verifique se há hits na resposta e extraia os dados relevantes
+    if (body) {
+      const hit = body.hits.hits[0];
+      const sourceData = hit._source;
+      const relevantData = {
+
+        nb: sourceData.nb,
+
+        // Adicione outros campos relevantes aqui
+      };
+
+      res.json(relevantData);
+    } else {
+      res.json({ message: 'Nenhuma correspondência encontrada para o CPF informado.' });
+    }
+  } catch (error) {
+    console.error('Erro ao realizar a busca no Elasticsearch:', error);
+    res.status(500).json({ error: 'Erro ao realizar a busca no Elasticsearch.' });
+  }
+});
+
 
 app.listen(PORT, () => {
   console.log(`Servidor rodando na porta ${PORT}`);
