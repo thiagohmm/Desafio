@@ -5,6 +5,8 @@ import requests
 from elasticsearch import Elasticsearch
 import os
 from dotenv import load_dotenv
+import threading
+import queue
 
 # RabbitMQ configuration
 RABBITMQ_HOST = 'localhost'
@@ -109,7 +111,7 @@ def save_json_to_elasticsearch(json_data, index_name, document_id=None):
         # Conecta-se ao Elasticsearch
         es = Elasticsearch([{'host': es_host, 'port': es_port, 'scheme': es_scheme}])
         # Grava o documento JSON no índice especificado
-        response = es.index(index=index_name, body=json_data, id=document_id)
+        response = es.index(index=index_name, document=json_data, id=document_id)
         if response['result'] == 'created':
             print("Documento gravado com sucesso!")
         elif response['result'] == 'updated':
@@ -118,6 +120,19 @@ def save_json_to_elasticsearch(json_data, index_name, document_id=None):
             print("Falha ao gravar o documento no Elasticsearch.")
     except Exception as e:
         print(f"Erro ao gravar o documento no Elasticsearch: {e}")
+
+def process_data_from_redis(token, data_chunk, result_queue):
+    cpfok = []
+    for data in data_chunk:
+        cpfToConsult = data.decode('utf-8')
+        result = make_get_request(cpfToConsult, token)
+        save_json_to_elasticsearch(result[0], cpfToConsult)
+        nb = result[0]['nb']
+        if nb != "Matrícula não encontrada!":
+            remove_cpf_from_redis(cpfToConsult)
+            dicionarioOK = {"CPF": cpfToConsult, "NB": result[0]['nb']}
+            cpfok.append(dicionarioOK)
+    result_queue.put(cpfok)
 
 
 def callback(ch, method, properties, body):
@@ -135,35 +150,44 @@ def callback(ch, method, properties, body):
     record_redis(cpflist)
     token = make_login_request()
     if token:
-        cpfok = []
-        print('Authorization Token:', token)
-        #Tras todos os dados com valor 0 no redis
         dataRedis = get_all_data_from_redis()
-        
-        #percorre as keys do redis 
-        for data in dataRedis:
-          #transforma de binario para string
-          cpfToConsult = data.decode('utf-8')
-          #Faz o request para buscar o numero do beneficio (NB)
-          result = make_get_request(cpfToConsult, token)
-          save_json_to_elasticsearch(result[0], cpfToConsult)
-          #Armazena o numero do NB 
-          nb = result[0]['nb']
-          #Caso retorno NAO for igual a Matricula nao encontrada 
-          if nb !=  "Matrícula não encontrada!":
-            #Remove o dado antigo do redis
-            remove_cpf_from_redis(cpfToConsult)
-            #coloca em uma estrutura para atualizaçao
-            dicionarioOK = {"CPF": cpfToConsult , "NB": result[0]['nb']}
-            cpfok.append(dicionarioOK)
-          
-            
-        #Se a estrutura nao for vazia atualiza o redis
-        if cpfok:
-            
-            record_redis(cpfok)
-        print(cpfok)
+        dataRedis = list(dataRedis)   # Converta para uma lista para torná-lo iterável
 
+         # Calcule o número de threads que você deseja usar (por exemplo, 4 threads)
+        num_threads = 4
+        chunk_size = len(dataRedis) // num_threads
+
+        # Crie uma fila segura para threads e coloque os pacotes de dados nela
+        data_queue = queue.Queue()
+        for i in range(num_threads):
+            start_index = i * chunk_size
+            end_index = start_index + chunk_size if i < num_threads - 1 else len(dataRedis)
+            thread_data = dataRedis[start_index:end_index]
+            data_queue.put(thread_data)
+
+         # Crie e inicie as threads
+        threads = []
+        result_queue = queue.Queue()
+        for i in range(num_threads):
+            thread_data = data_queue.get()
+            thread = threading.Thread(target=process_data_from_redis, args=(token, thread_data, result_queue))
+            thread.start()
+            threads.append(thread)
+
+        # Aguarde todas as threads concluírem
+        for thread in threads:
+            thread.join()
+
+         # Reúne os resultados da fila de resultados
+        cpfok = []
+        while not result_queue.empty():
+            cpfok.extend(result_queue.get())
+
+         # Se a estrutura não estiver vazia, atualize o Redis
+        if cpfok:
+            record_redis(cpfok)
+
+        print("Tarefas concluidas com sucesso") 
 
 def start_consumer():
     connection = pika.BlockingConnection(pika.ConnectionParameters(host=RABBITMQ_HOST))
@@ -175,8 +199,8 @@ def start_consumer():
     channel.start_consuming()
 
 if __name__ == '__main__':
-    # Create a Redis client
+    #Cria um cliente redis
     redis_client = redis.StrictRedis(host=REDIS_HOST, port=REDIS_PORT, db=REDIS_DB,  password=REDIS_AUTH)
 
-    # Start the consumer
+    # Starta o consumidor
     start_consumer()
