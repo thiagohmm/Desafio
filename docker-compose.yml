@@ -2,7 +2,8 @@ version: '3.8'
 
 services:
   cache:
-    image: redis:6.2-alpine
+    #image: redis:6.2-alpine
+    image: redis:7.0-alpine
     restart: always
     ports:
       - '6379:6379'
@@ -11,7 +12,8 @@ services:
     command: redis-server --save 20 1 --loglevel warning --requirepass eYVX7EwVmmxKPCDmwMtyKVge8oLd2t81
 
   rabbitmq:
-      image: rabbitmq:3-management
+      #image: rabbitmq:3-management
+      image: rabbitmq:3.12-management
       container_name: rabbitmq_management
       ports: 
         - 25672:25672 # (erlang) communication between the nodes and CLI tool
@@ -44,16 +46,81 @@ services:
         soft: -1
         hard: -1
       
-  kibana:
-    image: docker.elastic.co/kibana/kibana:8.4.0
+  api:
+    build:
+      context: ./api
+    container_name: api
+    entrypoint: sh /usr/src/app/start.sh
+    #command: "cd /usr/src/app/ && node index.js"
+    volumes:
+      - ./api:/usr/src/app
+      - /usr/src/app/node_modules
+    expose:
+      - '3001'
     ports:
-      - "5601:5601"
+      - "3001:3001"
+    tty: true
+    networks:
+      - gateway
+    depends_on:
+      - elasticsearch
+      - rabbitmq
+
+  crawler:
+    build:
+      context: ./crawler
+    container_name: crawler
+    entrypoint: sh /usr/src/app/start.sh
+    #command: "cd /usr/src/app/ && node index.js"
+    volumes:
+      - ./crawler:/usr/src/app
+      
+    tty: true
     networks:
       - gateway
     environment:
-      ELASTICSEARCH_URL: http://elasticsearch:9200
+        - RABBITMQ_DEFAULT_USER = admin
+        - API_URL = http://extratoblubeapp-env.eba-mvegshhd.sa-east-1.elasticbeanstalk.com/login
+        - LOGIN = konsiteste3
+        - SENHA = konsiteste3
+
+    
     depends_on:
       - elasticsearch
+      - rabbitmq
+      - api
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: frontend
+    #entrypoint: sh /usr/src/app/start.sh
+    #command: "cd /usr/src/app/ && node index.js"
+    volumes:
+      - /app/node_modules
+      - ./frontend:/app
+    expose:
+      - '3000'
+    #ports:
+    #  - "3001:3001"
+    tty: true
+    networks:
+      - gateway
+    depends_on:
+      - elasticsearch
+      - rabbitmq
+
+  nginx:
+    build:
+      context: ./nginx
+    container_name: nginx
+    tty: true
+    ports:
+      - "8080:8080"
+    networks:
+      - gateway
+    depends_on:
+      - api
 
 #volumes:
 #  esdata:

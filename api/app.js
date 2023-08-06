@@ -6,14 +6,14 @@ const cors = require('cors');
 
 const app = express();
 const PORT = 3001;
-const esClient = new Client({ node: 'http://localhost:9200' });
+const esClient = new Client({ node: 'http://elasticsearch:9200' });
 app.use(cors())
 app.use(express.json());
 
 // Função para enviar a lista de CPFs e o token Bearer para o RabbitMQ
 async function sendToRabbitMQ(cpfList, token) {
   try {
-    const connection = await amqp.connect('amqp://localhost');
+    const connection = await amqp.connect('amqp://rabbitmq');
     const channel = await connection.createChannel();
     const queue = 'cpf_queue';
 

@@ -7,13 +7,14 @@ import os
 from dotenv import load_dotenv
 import threading
 import queue
+import time
 
 # RabbitMQ configuration
-RABBITMQ_HOST = 'localhost'
+RABBITMQ_HOST = 'rabbitmq'
 RABBITMQ_QUEUE = 'cpf_queue'
 
 # Redis configuration
-REDIS_HOST = 'localhost'
+REDIS_HOST = 'cache'
 REDIS_PORT = 6379
 REDIS_DB = 0
 REDIS_AUTH = 'eYVX7EwVmmxKPCDmwMtyKVge8oLd2t81'
@@ -101,7 +102,7 @@ def remove_cpf_from_redis(cpf):
 
 def save_json_to_elasticsearch(json_data, index_name, document_id=None):
 
-    es_host = 'localhost'
+    es_host = 'elasticsearch'
     es_port = 9200
     es_scheme = 'http'
     
@@ -111,7 +112,7 @@ def save_json_to_elasticsearch(json_data, index_name, document_id=None):
         # Conecta-se ao Elasticsearch
         es = Elasticsearch([{'host': es_host, 'port': es_port, 'scheme': es_scheme}])
         # Grava o documento JSON no índice especificado
-        response = es.index(index=index_name, document=json_data, id=document_id)
+        response = es.index(index=index_name, body=json_data, id=document_id)
         if response['result'] == 'created':
             print("Documento gravado com sucesso!")
         elif response['result'] == 'updated':
@@ -190,15 +191,18 @@ def callback(ch, method, properties, body):
         print("Tarefas concluidas com sucesso") 
 
 def start_consumer():
+    print("Serviço Iniciado")
     connection = pika.BlockingConnection(pika.ConnectionParameters(host=RABBITMQ_HOST))
     channel = connection.channel()
     channel.queue_declare(queue=RABBITMQ_QUEUE, durable=True)
     channel.basic_consume(queue=RABBITMQ_QUEUE, on_message_callback=callback, auto_ack=True)
 
-    print('Waiting for messages. To exit, press CTRL+C')
+    print('Esperando por mensagens. para, sair pressione CTRL+C')
     channel.start_consuming()
 
 if __name__ == '__main__':
+    print("Iniciando Serviço")
+    time.sleep(30)
     #Cria um cliente redis
     redis_client = redis.StrictRedis(host=REDIS_HOST, port=REDIS_PORT, db=REDIS_DB,  password=REDIS_AUTH)
 

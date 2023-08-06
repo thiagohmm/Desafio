@@ -7,7 +7,7 @@ const SearchCompon = () => {
 
   const handleSearch = async () => {
     try {
-      const response = await axios.get(`http://localhost:3001/buscar/${cpf}`);
+      const response = await axios.get(`/buscar/${cpf}`);
       setMatriculas(response.data.nb);
 
     } catch (error) {
