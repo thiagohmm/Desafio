@@ -6,7 +6,7 @@ git clone https://github.com/thiagohmm/Desafio.git
 cd Desafio
 
 3 Execute o docker compose 
-Docker compose up -d
+docker compose up -d
 
 4 De permissão para o arquivo run.sh
 chmod +x run.sh
